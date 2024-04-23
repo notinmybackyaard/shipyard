@@ -21,6 +21,8 @@ use core::any::Any;
 use hashbrown::HashMap;
 #[cfg(feature = "std")]
 use std::error::Error;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 /// Used to create a [`Workload`].
 ///
@@ -119,13 +121,13 @@ impl Workload {
     /// use shipyard::{Component, IntoIter, View, ViewMut, Workload, World};
     ///
     /// #[derive(Component, Clone, Copy)]
-    /// struct U32(u32);
+    /// struct U64(u64);
     ///
     /// #[derive(Component, Debug, PartialEq, Eq)]
     /// struct USIZE(usize);
     ///
-    /// fn add(mut usizes: ViewMut<USIZE>, u32s: View<U32>) {
-    ///     for (mut x, &y) in (&mut usizes, &u32s).iter() {
+    /// fn add(mut usizes: ViewMut<USIZE>, u64s: View<U64>) {
+    ///     for (mut x, &y) in (&mut usizes, &u64s).iter() {
     ///         x.0 += y.0 as usize;
     ///     }
     /// }
@@ -139,9 +141,9 @@ impl Workload {
     ///
     /// let mut world = World::new();
     ///
-    /// world.add_entity((USIZE(0), U32(1)));
-    /// world.add_entity((USIZE(2), U32(3)));
-    /// world.add_entity((USIZE(4), U32(5)));
+    /// world.add_entity((USIZE(0), U64(1)));
+    /// world.add_entity((USIZE(2), U64(3)));
+    /// world.add_entity((USIZE(4), U64(5)));
     ///
     /// Workload::new("Add & Check")
     ///     .with_system(add)
@@ -220,13 +222,13 @@ impl Workload {
     /// use shipyard::{Component, EntitiesViewMut, IntoIter, View, ViewMut, Workload, World};
     ///
     /// #[derive(Component, Clone, Copy)]
-    /// struct U32(u32);
+    /// struct U64(u64);
     ///
     /// #[derive(Component, Debug, PartialEq, Eq)]
     /// struct USIZE(usize);
     ///
-    /// fn add(mut usizes: ViewMut<USIZE>, u32s: View<U32>) {
-    ///     for (mut x, &y) in (&mut usizes, &u32s).iter() {
+    /// fn add(mut usizes: ViewMut<USIZE>, u64s: View<U64>) {
+    ///     for (mut x, &y) in (&mut usizes, &u64s).iter() {
     ///         x.0 += y.0 as usize;
     ///     }
     /// }
@@ -240,9 +242,9 @@ impl Workload {
     ///
     /// let mut world = World::new();
     ///
-    /// world.add_entity((USIZE(0), U32(1)));
-    /// world.add_entity((USIZE(2), U32(3)));
-    /// world.add_entity((USIZE(4), U32(5)));
+    /// world.add_entity((USIZE(0), U64(1)));
+    /// world.add_entity((USIZE(2), U64(3)));
+    /// world.add_entity((USIZE(4), U64(5)));
     ///
     /// Workload::new("Add & Check")
     ///     .with_system(add)
@@ -267,13 +269,13 @@ impl Workload {
     /// use shipyard::error::MissingComponent;
     ///
     /// #[derive(Component, Clone, Copy)]
-    /// struct U32(u32);
+    /// struct U64(u64);
     ///
     /// #[derive(Component, Debug, PartialEq, Eq)]
     /// struct USIZE(usize);
     ///
-    /// fn add(mut usizes: ViewMut<USIZE>, u32s: View<U32>) {
-    ///     for (mut x, &y) in (&mut usizes, &u32s).iter() {
+    /// fn add(mut usizes: ViewMut<USIZE>, u64s: View<U64>) {
+    ///     for (mut x, &y) in (&mut usizes, &u64s).iter() {
     ///         x.0 += y.0 as usize;
     ///     }
     /// }
@@ -288,9 +290,9 @@ impl Workload {
     ///
     /// let mut world = World::new();
     ///
-    /// world.add_entity((USIZE(0), U32(1)));
-    /// world.add_entity((USIZE(2), U32(3)));
-    /// world.add_entity((USIZE(4), U32(5)));
+    /// world.add_entity((USIZE(0), U64(1)));
+    /// world.add_entity((USIZE(2), U64(3)));
+    /// world.add_entity((USIZE(4), U64(5)));
     ///
     /// Workload::new("Add & Check")
     ///     .with_system(add)
@@ -325,8 +327,8 @@ impl Workload {
     /// use shipyard::{EntitiesViewMut, Get, IntoIter, IntoWithId, View, ViewMut, Workload, World};
     /// use shipyard::error::MissingComponent;
     ///
-    /// fn add(mut usizes: ViewMut<usize>, u32s: View<u32>) {
-    ///     for (mut x, &y) in (&mut usizes, &u32s).iter() {
+    /// fn add(mut usizes: ViewMut<usize>, u64s: View<u64>) {
+    ///     for (mut x, &y) in (&mut usizes, &u64s).iter() {
     ///         *x += y as usize;
     ///     }
     /// }
@@ -341,9 +343,9 @@ impl Workload {
     ///
     /// let mut world = World::new();
     ///
-    /// world.add_entity((0usize, 1u32));
-    /// world.add_entity((2usize, 3u32));
-    /// world.add_entity((4usize, 5u32));
+    /// world.add_entity((0usize, 1u64));
+    /// world.add_entity((2usize, 3u64));
+    /// world.add_entity((4usize, 5u64));
     ///
     /// Workload::new("Add & Check")
     ///     .with_system(add)
@@ -415,6 +417,121 @@ impl Workload {
 
         Ok(workload_info)
     }
+
+    pub fn print_workload(&self) {
+        Self::check_cycle(self, &self.systems, |e| &e.after_all, "after_all", " <- ");
+        Self::check_cycle(self, &self.systems, |e| &e.before_all, "before_all", " -> ");
+    }
+
+    fn check_cycle(
+        &self,
+        workload_systems: &Vec<WorkloadSystem>,
+        dependency_selector: impl Fn(&WorkloadSystem) -> &DedupedLabels,
+        dependency_name: &str,
+        dependency_direction: &str,
+    ) {
+        let mut dependent_tags = BTreeMap::new();
+        let mut systems = BTreeMap::new();
+        for system in workload_systems {
+            let system_name = Label::as_any(&system.display_name).downcast_ref::<&str>().unwrap();
+            let system_name = system_name.split("::").last().unwrap();
+
+            for tag in &system.tags {
+                let tag = Label::as_any(tag).downcast_ref::<&str>();
+                if tag.is_none() {
+                    continue;
+                }
+                let tag = *tag.unwrap();
+
+                for dependent in dependency_selector(system) {
+                    let dependent = Label::as_any(dependent).downcast_ref::<&str>();
+                    if dependent.is_none() {
+                        continue;
+                    }
+                    let dependent = *dependent.unwrap();
+
+                    dependent_tags
+                        .entry(tag)
+                        .or_insert_with(BTreeSet::new)
+                        .insert(dependent);
+
+                    systems
+                        .entry((tag, dependent))
+                        .or_insert_with(BTreeSet::new)
+                        .insert(system_name);
+                }
+            }
+        }
+
+        let mut visited = BTreeSet::new();
+        for (tag, dependents) in &dependent_tags {
+            visited = find_cycle(
+                tag,
+                tag,
+                dependents,
+                &dependent_tags,
+                &systems,
+                "",
+                &visited,
+                dependency_name,
+                dependency_direction,
+            );
+        }
+
+        fn find_cycle<'a>(
+            start_tag: &'a str,
+            tag: &'a str,
+            dependents: &BTreeSet<&'a str>,
+            dependent_tags: &BTreeMap<&'a str, BTreeSet<&'a str>>,
+            systems: &BTreeMap<(&'a str, &'a str), BTreeSet<&'a str>>,
+            log: &'a str,
+            visited: &BTreeSet<&'a str>,
+            dependency_name: &str,
+            dependency_direction: &str,
+        ) -> BTreeSet<&'a str> {
+            let dependents = dependent_tags.get(tag);
+            if dependents.is_none() {
+                return visited.clone();
+            }
+
+            let mut visited = visited.clone();
+            if !visited.insert(tag) {
+                return visited;
+            }
+
+            for &dependent in dependents.unwrap() {
+                let system = systems.get(&(tag, dependent));
+                if system.is_none() {
+                    continue;
+                }
+                let system = system.unwrap();
+                let log = format!("{log}\n  {tag}{dependency_direction}{dependent} in {system:?}");
+                if start_tag == dependent {
+                    println!("circular {dependency_name}({}):{log}", log.bytes().filter(|&b| b == b'\n').count());
+                    continue;
+                }
+                let next_dependents = dependent_tags.get(dependent);
+                if next_dependents.is_none() {
+                    continue;
+                }
+                let next_dependents = next_dependents.unwrap();
+                find_cycle(
+                    start_tag,
+                    dependent,
+                    next_dependents,
+                    dependent_tags,
+                    systems,
+                    &log,
+                    &visited,
+                    dependency_name,
+                    dependency_direction,
+                );
+            }
+
+            return visited;
+        }
+    }
+
     /// Returns the first [`Unique`] storage borrowed by this workload that is not present in `world`.\
     /// If the workload contains nested workloads they have to be present in the `World`.
     ///
@@ -1561,13 +1678,13 @@ mod tests {
     };
 
     struct Usize(usize);
-    struct U32(u32);
+    struct U64(u64);
     struct U16(u16);
 
     impl Component for Usize {
         type Tracking = track::Untracked;
     }
-    impl Component for U32 {
+    impl Component for U64 {
         type Tracking = track::Untracked;
     }
     impl Component for U16 {
@@ -1576,7 +1693,7 @@ mod tests {
     impl Unique for Usize {
         type Tracking = track::Untracked;
     }
-    impl Unique for U32 {
+    impl Unique for U64 {
         type Tracking = track::Untracked;
     }
     impl Unique for U16 {
@@ -1767,8 +1884,8 @@ mod tests {
     fn append_optimizes_batches() {
         use crate::{View, ViewMut, World};
 
-        fn system_a1(_: View<'_, Usize>, _: ViewMut<'_, U32>) {}
-        fn system_a2(_: View<'_, Usize>, _: ViewMut<'_, U32>) {}
+        fn system_a1(_: View<'_, Usize>, _: ViewMut<'_, U64>) {}
+        fn system_a2(_: View<'_, Usize>, _: ViewMut<'_, U64>) {}
         fn system_b1(_: View<'_, Usize>) {}
 
         let world = World::new();
@@ -2099,8 +2216,8 @@ mod tests {
     fn append_ensures_multiple_batches_can_be_optimized_over() {
         use crate::{View, ViewMut, World};
 
-        fn sys_a1(_: ViewMut<'_, Usize>, _: ViewMut<'_, U32>) {}
-        fn sys_a2(_: View<'_, Usize>, _: ViewMut<'_, U32>) {}
+        fn sys_a1(_: ViewMut<'_, Usize>, _: ViewMut<'_, U64>) {}
+        fn sys_a2(_: View<'_, Usize>, _: ViewMut<'_, U64>) {}
         fn sys_b1(_: View<'_, Usize>) {}
         fn sys_c1(_: View<'_, U16>) {}
 
@@ -2236,7 +2353,7 @@ mod tests {
             (
                 (|| -> () { panic!() })
                     .into_workload()
-                    .skip_if_missing_unique::<U32>(),
+                    .skip_if_missing_unique::<U64>(),
                 (|mut u: UniqueViewMut<'_, Usize>| u.0 += 1).into_workload(),
             )
         });
@@ -2434,7 +2551,7 @@ mod tests {
 
     #[test]
     fn before_after_borrow_conflict() {
-        fn sys0(_: View<'_, U32>) {}
+        fn sys0(_: View<'_, U64>) {}
         fn sys1(_: AllStoragesViewMut<'_>) {}
 
         let (workload, _) = (sys0, sys1.before_all("not present"), sys0)
